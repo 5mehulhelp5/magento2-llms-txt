@@ -17,7 +17,7 @@
             "registration.php"
         ],
         "psr-4": {
-            "SR\\LlmsTxt\\": "src"
+            "SR\\LlmsTxt\\": ""
         }
     },
     "support": {
