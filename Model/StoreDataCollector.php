@@ -12,7 +12,6 @@ use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Store\Model\StoreManagerInterface;
 
-// TODO for the future generating purposes.
 class StoreDataCollector
 {
     public function __construct(
@@ -31,6 +30,7 @@ class StoreDataCollector
         return [
             'store_name' => $this->storeManager->getStore($storeId)->getName(),
             'store_url' => $baseUrl,
+            'home_page_meta_title' => $this->getHomePageMetaTitle($storeId),
             'categories' => $this->collectCategories($storeId, $baseUrl),
             'products' => $this->collectProducts($storeId, $baseUrl),
             'cms_pages' => $this->collectCmsPages($storeId, $baseUrl),
@@ -44,8 +44,8 @@ class StoreDataCollector
             ->addAttributeToFilter('is_active', 1)
             ->addAttributeToFilter('level', 2) // Only top-level categories
             ->setStoreId($storeId)
-            ->setOrder('position', 'ASC')
-            ->setPageSize(10);
+            ->setOrder('position', 'ASC');
+//            ->setPageSize(10);
 
         $categories = [];
         foreach ($collection as $category) {
@@ -53,6 +53,7 @@ class StoreDataCollector
                 'name' => (string) $category->getName(),
                 'url' => $baseUrl . $category->getUrlKey() . '.html',
                 'description' => strip_tags((string) $category->getDescription()),
+                'full_content' => sprintf('[%s](%s): %s', (string) $category->getName(), $baseUrl . $category->getUrlKey() . '.html', strip_tags((string) $category->getDescription())),
             ];
         }
 
@@ -95,26 +96,29 @@ class StoreDataCollector
             return [];
         }
 
-        $priorityIdentifiers = ['about-us', 'contact-us', 'customer-service', 'shipping', 'returns'];
         $cmsPages = [];
 
         foreach ($pages as $page) {
             $identifier = (string) $page->getIdentifier();
 
-            if ($identifier === 'home' || $identifier === 'no-route') {
+            if ($identifier === 'home') {
                 continue;
-            }
-
-            if (!in_array($identifier, $priorityIdentifiers, true)) {
-                continue; // Only include priority pages
             }
 
             $cmsPages[] = [
                 'title' => (string) $page->getTitle(),
                 'url' => $baseUrl . $identifier,
-                'identifier' => $identifier,
+                'meta_description' => (string) $page->getMetaDescription(),
+                'full_content' => sprintf('[%s](%s): %s', $page->getTitle(), $baseUrl . $identifier, $page->getMetaDescription()),
             ];
         }
+        // Add Contact Us page
+        $cmsPages[] = [
+            'title' => 'Contact Us',
+            'url' => $baseUrl . 'contact',
+            'meta_description' => 'Get in touch with us through our Contact Us page.',
+            'full_content' => sprintf('[%s](%s): %s', 'Contact Us', $baseUrl . 'contact', 'Get in touch with us through our Contact Us page.'),
+        ];
 
         return $cmsPages;
     }
@@ -126,5 +130,33 @@ class StoreDataCollector
         } catch (NoSuchEntityException $e) {
             return '';
         }
+    }
+
+    private function getHomePageMetaTitle(int $storeId): string
+    {
+        $searchCriteria = $this->searchCriteriaBuilder
+            ->addFilter('identifier', 'home')
+            ->addFilter('is_active', 1)
+            ->addFilter('store_id', [$storeId, 0], 'in')
+            ->create();
+        $pages = $this->pageRepository->getList($searchCriteria)->getItems();
+        foreach ($pages as $page) {
+            return (string) $page->getMetaTitle();
+        }
+        return '';
+    }
+
+    private function getCmsPageMetaTitle(string $identifier, int $storeId): string
+    {
+        $searchCriteria = $this->searchCriteriaBuilder
+            ->addFilter('identifier', $identifier)
+            ->addFilter('is_active', 1)
+            ->addFilter('store_id', [$storeId, 0], 'in')
+            ->create();
+        $pages = $this->pageRepository->getList($searchCriteria)->getItems();
+        foreach ($pages as $page) {
+            return (string) $page->getTitle();
+        }
+        return '';
     }
 }

@@ -17,10 +17,25 @@
                     <comment>When enabled, your store will serve an llms.txt file at /llms.txt</comment>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
-                <field id="content" translate="label comment" type="textarea" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                <field id="use_manual_content" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Use Manual Content</label>
+                    <comment>Override generated content with your own custom content</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="*/*/enabled">1</field>
+                    </depends>
+                </field>
+                <field id="manual_content" translate="label comment" type="textarea" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Content</label>
                     <comment>Write your own llms.txt content in markdown format</comment>
                     <frontend_model>SR\Codemirror\Block\Adminhtml\System\Config\Form\Field\Markdown</frontend_model>
+                    <depends>
+                        <field id="*/*/enabled">1</field>
+                    </depends>
+                </field>
+                <field id="generate_button" translate="label" type="button" sortOrder="45" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label></label>
+                    <frontend_model>SR\LlmsTxt\Block\Adminhtml\System\Config\GenerateButton</frontend_model>
                     <depends>
                         <field id="*/*/enabled">1</field>
                     </depends>

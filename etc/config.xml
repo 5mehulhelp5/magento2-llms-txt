@@ -5,6 +5,7 @@
         <llmtxt>
             <general>
                 <enabled>0</enabled>
+                <use_manual_content>0</use_manual_content>
             </general>
         </llmtxt>
     </default>

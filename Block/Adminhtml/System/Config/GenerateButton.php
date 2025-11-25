@@ -8,8 +8,6 @@ use Magento\Backend\Block\Template\Context;
 use Magento\Config\Block\System\Config\Form\Field;
 use Magento\Framework\Data\Form\Element\AbstractElement;
 
-// TODO for the future generating purposes.
-
 class GenerateButton extends Field
 {
     protected $_template = 'SR_LlmsTxt::system/config/generate_button.phtml';
@@ -38,7 +36,7 @@ class GenerateButton extends Field
             \Magento\Backend\Block\Widget\Button::class
         )->setData([
             'id' => 'llmtxt_generate_button',
-            'label' => __('Generate with AI'),
+            'label' => __('Generate content'),
             'class' => 'action-default scalable',
         ]);
 
