@@ -6,7 +6,7 @@
 <div class="llmtxt-generate-container">
     <?= $block->getButtonHtml() ?>
     <div id="llmtxt-generate-status" style="margin-top: 10px; display: none;">
-        <span class="message"></span>
+        <span class="llmtxt-generated-message"></span>
     </div>
 </div>
 
@@ -14,65 +14,76 @@
 require([
     'jquery',
     'Magento_Ui/js/modal/alert',
+    'Magento_Ui/js/modal/confirm',
     'mage/translate',
     'domReady!'
-], function ($, alert, $t) {
+], function ($, alert, confirm, $t) {
     'use strict';
 
     $('#llmtxt_generate_button').on('click', function () {
         const button = $(this);
         const statusDiv = $('#llmtxt-generate-status');
-        const statusMessage = statusDiv.find('.message');
+        const statusMessage = statusDiv.find('.llmtxt-generated-message');
 
-        // Disable button and show loading
-        button.prop('disabled', true).addClass('disabled');
-        statusDiv.show();
-        statusMessage.html('<span style="color: #007bdb;">⏳ Generating content with AI... This may take 10-30 seconds.</span>');
+        confirm({
+            title: $t('Warning'),
+            content: $t('The whole existing content will be replaced after auto generating.'),
+            actions: {
+                confirm: function () {
+                    // Disable button and show loading
+                    button.prop('disabled', true).addClass('disabled');
+                    statusDiv.show();
+                    statusMessage.html('<span style="color: #007bdb;">⏳ Generating content... This may take some time.</span>');
 
-        $.ajax({
-            url: '<?= $block->escapeJs($block->getAjaxUrl()) ?>',
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                form_key: FORM_KEY,
-                store: '<?= (int) $block->getRequest()->getParam('store', 0) ?>'
-            },
-            success: function (response) {
-                if (response.success) {
-                    // Populate the generated_content textarea
-                    const contentField = $('[name="groups[content][fields][generated_content][value]"]');
-                    if (contentField.length) {
-                        contentField.val(response.content);
-                        contentField.trigger('change');
-                    }
+                    $.ajax({
+                        url: '<?= $block->escapeJs($block->getAjaxUrl()) ?>',
+                        type: 'POST',
+                        dataType: 'json',
+                        data: {
+                            form_key: FORM_KEY,
+                            store: '<?= (int) $block->getRequest()->getParam('store', 0) ?>'
+                        },
+                        success: function (response) {
+                            if (response.success) {
+                                // Populate the content textarea
+                                const contentField = $('[name="groups[general][fields][manual_content][value]"]');
+                                if (contentField.length) {
+                                    contentField.val(response.content);
+                                    contentField.trigger('change');
+                                }
 
-                    statusMessage.html(
-                        '<span style="color: #79a22e;">✓ ' + response.message + '</span>' +
-                        '<br><small>Review the generated content below and click "Save Config" to apply.</small>'
-                    );
+                                statusMessage.html(
+                                    '<span style="color: #79a22e; font-weight: 500;">✓ ' + response.message + '</span>' +
+                                    '<br><small>Review the generated content above and click "Save Config" to apply.</small>'
+                                );
 
-                    // Show success alert
-                    alert({
-                        title: $t('Success'),
-                        content: $t('LLM.txt content generated successfully with %1 tokens. Review and save when ready.').replace('%1', response.tokens)
+                                alert({
+                                    title: $t('Success'),
+                                    content: $t('LLMS.txt content generated successfully. Review and save when ready.')
+                                });
+                            } else {
+                                statusMessage.html('<span style="color: #e02b27; font-weight: 500;">✗ ' + response.message + '</span>');
+                                alert({
+                                    title: $t('Error'),
+                                    content: response.error || response.message
+                                });
+                            }
+                        },
+                        error: function (xhr, status, error) {
+                            statusMessage.html('<span style="color: #e02b27;">✗ Request failed: ' + error + '</span>');
+                            alert({
+                                title: $t('Error'),
+                                content: $t('Failed to connect to generation service. Please try again.')
+                            });
+                        },
+                        complete: function () {
+                            button.prop('disabled', false).removeClass('disabled');
+                        }
                     });
-                } else {
-                    statusMessage.html('<span style="color: #e02b27;">✗ ' + response.message + '</span>');
-                    alert({
-                        title: $t('Error'),
-                        content: response.error || response.message
-                    });
+                },
+                cancel: function () {
+                    // Do nothing
                 }
-            },
-            error: function (xhr, status, error) {
-                statusMessage.html('<span style="color: #e02b27;">✗ Request failed: ' + error + '</span>');
-                alert({
-                    title: $t('Error'),
-                    content: $t('Failed to connect to generation service. Please try again.')
-                });
-            },
-            complete: function () {
-                button.prop('disabled', false).removeClass('disabled');
             }
         });
     });
