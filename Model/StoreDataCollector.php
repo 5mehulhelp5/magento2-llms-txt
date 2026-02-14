@@ -12,7 +12,6 @@ use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Module\Manager;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Store\Model\StoreManagerInterface;
-use Magento\Framework\UrlInterface as UrlInterface;
 use Magento\Framework\ObjectManagerInterface;
 
 class StoreDataCollector
@@ -24,9 +23,9 @@ class StoreDataCollector
         private readonly ProductCollectionFactory  $productCollectionFactory,
         private readonly PageRepositoryInterface   $pageRepository,
         private readonly SearchCriteriaBuilder     $searchCriteriaBuilder,
-        private readonly UrlInterface              $urlBuilder,
         private readonly Manager                   $moduleManager,
         private readonly Config                    $config,
+        private readonly FaqCollector              $faqCollector,
         private readonly ?array $dependenciesArray = null
     ) {
     }
@@ -43,18 +42,30 @@ class StoreDataCollector
             'products' => $this->collectProducts($storeId, $baseUrl),
             'product_feed_urls' => $this->getProductFeedUrls($storeId),
             'cms_pages' => $this->collectCmsPages($storeId, $baseUrl),
+            'faq' => $this->collectFaq($storeId),
+            'social_media' => $this->collectSocialLinks($storeId),
             'point_of_sales' => $this->getPointOfSales($storeId, $baseUrl),
+            'additional_content' => $this->config->getAdditionalContent($storeId),
         ];
     }
 
     protected function collectCategories(int $storeId, string $baseUrl): array
     {
+        $categoryIds = $this->config->getCategories($storeId);
+
         $collection = $this->categoryCollectionFactory->create();
         $collection->addAttributeToSelect(['name', 'url_key', 'meta_description'])
             ->addAttributeToFilter('is_active', 1)
-            ->addAttributeToFilter('level', 2) // Only top-level categories
             ->setStoreId($storeId)
             ->setOrder('position', 'ASC');
+
+        // Filter by configured category IDs if specified
+        if (!empty($categoryIds)) {
+            $collection->addAttributeToFilter('entity_id', ['in' => $categoryIds]);
+        } else {
+            // Fall back to level 2 categories if no configuration is set
+            $collection->addAttributeToFilter('level', 2);
+        }
 
         $categories = [];
         foreach ($collection as $category) {
@@ -70,12 +81,14 @@ class StoreDataCollector
 
     protected function collectProducts(int $storeId, string $baseUrl): array
     {
-        // Get 10 bestsellers for the current store
+        $productLimit = $this->config->getProductLimit($storeId);
+
+        // Get bestsellers for the current store
         $bestsellerCollection = \Magento\Framework\App\ObjectManager::getInstance()->create(\Magento\Sales\Model\ResourceModel\Report\Bestsellers\Collection::class);
         $bestsellerCollection->setModel(\Magento\Catalog\Model\Product::class)
             ->addStoreFilter($storeId)
             ->setPeriod('year')
-            ->setPageSize(10)
+            ->setPageSize($productLimit)
             ->setCurPage(1);
 
         $productIds = [];
@@ -91,7 +104,7 @@ class StoreDataCollector
             ->addUrlRewrite()
             ->addStoreFilter($storeId)
             ->setCurPage(1)
-            ->setPageSize(10);
+            ->setPageSize($productLimit);
 
         if (!empty($productIds)) {
             $collection->addAttributeToFilter('entity_id', ['in' => $productIds]);
@@ -112,15 +125,14 @@ class StoreDataCollector
 
     protected function collectCmsPages(int $storeId, string $baseUrl): array
     {
-        $homePageIdentifier = $this->config->getHomePageIdentifier($storeId);
-        $noRouteIdentifier = $this->config->getNoRouteIdentifier($storeId);
-        $noCookiesIdentifier = $this->config->getNoCookiesIdentifier($storeId);
-        $skipIdentifiers = [$homePageIdentifier, $noRouteIdentifier, $noCookiesIdentifier];
+        $pageIds = $this->config->getPages($storeId);
 
         $searchCriteria = $this->searchCriteriaBuilder
             ->addFilter('is_active', 1)
             ->addFilter('store_id', [$storeId, 0], 'in')
-            ->create();
+            ->addFilter('identifier', $pageIds, 'in');
+
+        $searchCriteria = $searchCriteria->create();
 
         try {
             $pages = $this->pageRepository->getList($searchCriteria)->getItems();
@@ -130,27 +142,42 @@ class StoreDataCollector
 
         $cmsPages = [];
 
-        foreach ($pages as $page) {
-            $identifier = (string)$page->getIdentifier();
+        $baseUrl = rtrim($baseUrl, '/');
 
-            if (in_array($identifier, $skipIdentifiers, true)) {
-                continue;
+        foreach ($pages as $page) {
+            $identifier = $page->getIdentifier();
+
+            // If the page is the home page, use the base URL without the identifier
+            $homePageIdentifier = $this->config->getHomePageIdentifier($storeId);
+            if ($identifier === $homePageIdentifier) {
+                $identifier = '';
+            }
+            else {
+                $identifier = '/' . $identifier;
             }
 
             $cmsPages[] = [
                 'title' => (string)$page->getTitle(),
-                'url' => $baseUrl . $this->urlBuilder->getUrl($identifier),
+                'url' => $baseUrl . $identifier,
                 'meta_description' => (string)$page->getMetaDescription(),
             ];
         }
-        // Add Contact Us page
-        $cmsPages[] = [
-            'title' => 'Contact Us',
-            'url' => $baseUrl . 'contact',
-            'meta_description' => 'Get in touch with us through our Contact Us page.',
-        ];
 
         return $cmsPages;
+    }
+
+    protected function collectFaq(int $storeId): array
+    {
+        if (!$this->config->isAmastyFaqEnabled($storeId)) {
+            return [];
+        }
+
+        return $this->faqCollector->collect($storeId);
+    }
+
+    protected function collectSocialLinks(int $storeId): array
+    {
+        return $this->config->getSocialLinks($storeId);
     }
 
     protected function getBaseUrl(int $storeId): string
